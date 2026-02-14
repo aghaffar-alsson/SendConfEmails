@@ -1,3 +1,5 @@
+import express from "express";
+const app = express();
 import  sql from "mssql";
 import  cron from "node-cron"
 import dotenv from "dotenv"
@@ -9,6 +11,8 @@ import { google } from "googleapis";
 dotenv.config();
 const logoPath = path.join(process.cwd(), "assets", "newgiza-logo.jpg");
 console.log("Logo exists?", fs.existsSync(logoPath));
+const app = express();
+
 //SQL SERVER CONNECTION STRING
 const sqlConfig = {
   server: process.env.VITE_SERVER_NAME,
@@ -332,3 +336,6 @@ cron.schedule("*/2 * * * *", async () => {
     }
   }
 });
+
+app.listen(process.env.PORT || 3000);
+

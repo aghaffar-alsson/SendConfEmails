@@ -9,6 +9,7 @@ import { google } from "googleapis";
 
 dotenv.config();
 const logoPath = path.join(process.cwd(), "assets", "newgiza-logo.jpg");
+console.log(logoPath);
 console.log("Logo exists?", fs.existsSync(logoPath));
 const app = express();
 
@@ -337,5 +338,6 @@ cron.schedule("*/2 * * * *", async () => {
 });
 
 app.listen(process.env.PORT || 3000);
+
 
 

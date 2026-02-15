@@ -1,5 +1,4 @@
 import express from "express";
-const app = express();
 import  sql from "mssql";
 import  cron from "node-cron"
 import dotenv from "dotenv"
@@ -338,4 +337,5 @@ cron.schedule("*/2 * * * *", async () => {
 });
 
 app.listen(process.env.PORT || 3000);
+
 

@@ -9,6 +9,15 @@ import { google } from "googleapis";
 
 dotenv.config();
 const logoPath = path.join(process.cwd(), "assets", "newgiza-logo.jpg");
+let logoBase64 = "";
+
+if (fs.existsSync(logoPath)) {
+  const logoBuffer = fs.readFileSync(logoPath);
+  logoBase64 = logoBuffer.toString("base64");
+  console.log("Logo converted to base64 successfully");
+} else {
+  console.error("Logo file not found at:", logoPath);
+}
 console.log(logoPath);
 console.log("Logo exists?", fs.existsSync(logoPath));
 const app = express();
@@ -338,6 +347,7 @@ cron.schedule("*/2 * * * *", async () => {
 });
 
 app.listen(process.env.PORT || 3000);
+
 
 
 

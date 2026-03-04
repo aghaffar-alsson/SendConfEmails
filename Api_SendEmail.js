@@ -203,7 +203,7 @@ cron.schedule("*/1 * * * *", async () => {
       <img src="cid:schoollogo" alt="School Logo" style="height:10px; width:10px; display:block; margin:auto;">
       </div>
     `;
-
+console.log(html)
       await sendEmail({
         to: row.customer_email,
         bcc: process.env.BccEmailAddress,
@@ -347,6 +347,7 @@ cron.schedule("*/2 * * * *", async () => {
 });
 
 app.listen(process.env.PORT || 3000);
+
 
 
 

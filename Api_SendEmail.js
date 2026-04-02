@@ -111,37 +111,105 @@ const gmail = google.gmail({
 // });
 
 async function sendEmail({ to, bcc, subject, html }) {
-  const boundary = "boundary_xyz";
+  const mixedBoundary = "mixed_" + Date.now();
+  const relatedBoundary = "related_" + Date.now();
+  const altBoundary = "alt_" + Date.now();
+
+  const cleanLogoBase64 = (logoBase64 || "").replace(/^data:image\/\w+;base64,/, "");
+
+  // Plain text fallback
+  const plainText = `
+Payment Receipt
+
+Dear Parent,
+
+Your online payment through Amazon Payment Services (AWS - PayFort) has been successfully processed.
+
+Thank you for your payment.
+
+Finance Department
+El Alsson British & American International School - Newgiza
+www.alsson.com
+  `.trim();
 
   const messageParts = [
     `From: El Alsson School <${process.env.FromEmailAddress}>`,
     `To: ${to}`,
     bcc ? `Bcc: ${bcc}` : "",
     `Subject: ${subject}`,
+    `Date: ${new Date().toUTCString()}`,
+    `Message-ID: <${Date.now()}.${Math.random().toString(36).slice(2)}@elalsson.local>`,
     `MIME-Version: 1.0`,
-    `Content-Type: multipart/related; boundary="${boundary}"; type="text/html"`,
+    `Content-Type: multipart/mixed; boundary="${mixedBoundary}"`,
     "",
-    `--${boundary}`,
+
+    // ===== mixed starts =====
+    `--${mixedBoundary}`,
+    `Content-Type: multipart/related; boundary="${relatedBoundary}"`,
+    "",
+
+    // ===== related starts =====
+    `--${relatedBoundary}`,
+    `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+    "",
+
+    // ===== plain text part =====
+    `--${altBoundary}`,
+    `Content-Type: text/plain; charset="UTF-8"`,
+    `Content-Transfer-Encoding: 7bit`,
+    "",
+    plainText,
+    "",
+
+    // ===== html part =====
+    `--${altBoundary}`,
     `Content-Type: text/html; charset="UTF-8"`,
     `Content-Transfer-Encoding: 7bit`,
     "",
     html,
     "",
-    `--${boundary}`,
-    `Content-Type: image/jpeg; name="logo.jpg"`,
-    `Content-Transfer-Encoding: base64`,
-    `Content-ID: <schoollogo>`,
-    `Content-Disposition: inline; filename="logo.jpg"`,
+
+    // ===== end alternative =====
+    `--${altBoundary}--`,
     "",
-    logoBase64,
+
+    // ===== inline image part =====
+    cleanLogoBase64
+      ? `--${relatedBoundary}`
+      : "",
+    cleanLogoBase64
+      ? `Content-Type: image/jpeg; name="newgiza-logo.jpg"`
+      : "",
+    cleanLogoBase64
+      ? `Content-Transfer-Encoding: base64`
+      : "",
+    cleanLogoBase64
+      ? `Content-ID: <schoollogo>`
+      : "",
+    cleanLogoBase64
+      ? `Content-Disposition: inline; filename="newgiza-logo.jpg"`
+      : "",
+    cleanLogoBase64 ? "" : "",
+    cleanLogoBase64 || "",
+    cleanLogoBase64 ? "" : "",
+
+    // ===== end related =====
+    `--${relatedBoundary}--`,
     "",
-    `--${boundary}--`,
+
+    // ===== end mixed =====
+    `--${mixedBoundary}--`,
     ""
   ].filter(Boolean);
 
   const rawMessage = messageParts.join("\r\n");
 
-  const encodedMessage = Buffer.from(rawMessage)
+  // Debug (very useful)
+  console.log("===== RAW EMAIL PREVIEW START =====");
+  console.log(rawMessage.slice(0, 3000));
+  console.log("===== RAW EMAIL PREVIEW END =====");
+
+  const encodedMessage = Buffer.from(rawMessage, "utf-8")
     .toString("base64")
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
@@ -152,6 +220,7 @@ async function sendEmail({ to, bcc, subject, html }) {
     requestBody: { raw: encodedMessage },
   });
 }
+
 console.log("Email:", process.env.FromEmailAddress);
 console.log("App Password exists?", process.env.AppPswd);
 

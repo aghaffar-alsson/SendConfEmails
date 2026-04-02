@@ -59,44 +59,44 @@ const gmail = google.gmail({
   auth: oAuth2Client,
 });
 
-async function sendEmail({ to, bcc, subject, html }) {
-  const boundary = "boundary_xyz";
+// async function sendEmail({ to, bcc, subject, html }) {
+//   const boundary = "boundary_xyz";
 
-  const messageParts = [
-    `From: El Alsson School <${process.env.FromEmailAddress}>`,
-    `To: ${to}`,
-    bcc ? `Bcc: ${bcc}` : "",
-    `Subject: ${subject}`,
-    `MIME-Version: 1.0`,
-    `Content-Type: multipart/related; boundary=${boundary}`,
-    "",
-    `--${boundary}`,
-    `Content-Type: text/html; charset="UTF-8"`,
-    "",
-    html,
-    `--${boundary}`,
-    `Content-Type: image/jpeg`,
-    `Content-Transfer-Encoding: base64`,
-    `Content-ID: <schoollogo>`,
-    `Content-Disposition: inline; filename="logo.jpg"`,
-    "",
-    logoBase64,
-    `--${boundary}--`
-  ].filter(Boolean);
+//   const messageParts = [
+//     `From: El Alsson School <${process.env.FromEmailAddress}>`,
+//     `To: ${to}`,
+//     bcc ? `Bcc: ${bcc}` : "",
+//     `Subject: ${subject}`,
+//     `MIME-Version: 1.0`,
+//     `Content-Type: multipart/related; boundary=${boundary}`,
+//     "",
+//     `--${boundary}`,
+//     `Content-Type: text/html; charset="UTF-8"`,
+//     "",
+//     html,
+//     `--${boundary}`,
+//     `Content-Type: image/jpeg`,
+//     `Content-Transfer-Encoding: base64`,
+//     `Content-ID: <schoollogo>`,
+//     `Content-Disposition: inline; filename="logo.jpg"`,
+//     "",
+//     logoBase64,
+//     `--${boundary}--`
+//   ].filter(Boolean);
 
-  const rawMessage = messageParts.join("\n");
+//   const rawMessage = messageParts.join("\n");
 
-  const encodedMessage = Buffer.from(rawMessage)
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
+//   const encodedMessage = Buffer.from(rawMessage)
+//     .toString("base64")
+//     .replace(/\+/g, "-")
+//     .replace(/\//g, "_")
+//     .replace(/=+$/, "");
 
-  await gmail.users.messages.send({
-    userId: "me",
-    requestBody: { raw: encodedMessage },
-  });
-}
+//   await gmail.users.messages.send({
+//     userId: "me",
+//     requestBody: { raw: encodedMessage },
+//   });
+// }
 
 
 // Outlook or Internal SMTP
@@ -109,6 +109,49 @@ async function sendEmail({ to, bcc, subject, html }) {
 //     pass: process.env.AppPswd,
 //   }
 // });
+
+async function sendEmail({ to, bcc, subject, html }) {
+  const boundary = "boundary_xyz";
+
+  const messageParts = [
+    `From: El Alsson School <${process.env.FromEmailAddress}>`,
+    `To: ${to}`,
+    bcc ? `Bcc: ${bcc}` : "",
+    `Subject: ${subject}`,
+    `MIME-Version: 1.0`,
+    `Content-Type: multipart/related; boundary="${boundary}"; type="text/html"`,
+    "",
+    `--${boundary}`,
+    `Content-Type: text/html; charset="UTF-8"`,
+    `Content-Transfer-Encoding: 7bit`,
+    "",
+    html,
+    "",
+    `--${boundary}`,
+    `Content-Type: image/jpeg; name="logo.jpg"`,
+    `Content-Transfer-Encoding: base64`,
+    `Content-ID: <schoollogo>`,
+    `Content-Disposition: inline; filename="logo.jpg"`,
+    "",
+    logoBase64,
+    "",
+    `--${boundary}--`,
+    ""
+  ].filter(Boolean);
+
+  const rawMessage = messageParts.join("\r\n");
+
+  const encodedMessage = Buffer.from(rawMessage)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
+  await gmail.users.messages.send({
+    userId: "me",
+    requestBody: { raw: encodedMessage },
+  });
+}
 console.log("Email:", process.env.FromEmailAddress);
 console.log("App Password exists?", process.env.AppPswd);
 
@@ -352,7 +395,7 @@ cron.schedule("*/2 * * * *", async () => {
         <img src="cid:schoollogo" alt="School Logo" style="height:10px; width:10px; display:block; margin:auto;">
       </div>
       `;
-    console.log(html);
+
     //   await transporter.sendMail({
     //     from: process.env.FromEmailAddress,
     //     to: row.customer_email,
@@ -368,6 +411,7 @@ cron.schedule("*/2 * * * *", async () => {
     //       }
     //     ],
     //   });
+    console.log(html);
     await sendEmail({
     to: row.customer_email,
     bcc: process.env.BccEmailAddress,
@@ -385,10 +429,10 @@ cron.schedule("*/2 * * * *", async () => {
     }
   }
 });
+
 console.log("📧 loop APS ended");
 
 app.listen(process.env.PORT || 3000);
-
 
 
 

@@ -352,8 +352,7 @@ cron.schedule("*/2 * * * *", async () => {
         <img src="cid:schoollogo" alt="School Logo" style="height:10px; width:10px; display:block; margin:auto;">
       </div>
       `;
-
-      console.log("📧 loop APS ended");
+    console.log(html);
     //   await transporter.sendMail({
     //     from: process.env.FromEmailAddress,
     //     to: row.customer_email,
@@ -372,7 +371,7 @@ cron.schedule("*/2 * * * *", async () => {
     await sendEmail({
     to: row.customer_email,
     bcc: process.env.BccEmailAddress,
-    subject: `Payment Confirmation for ${row.s_code} ${row.student_name}`,
+    subject: `Payment Confirmation for ${row.s_code} ${row.student_name} - ${topic}`,
     html
     });
     await pool.request().query(`
@@ -386,6 +385,7 @@ cron.schedule("*/2 * * * *", async () => {
     }
   }
 });
+console.log("📧 loop APS ended");
 
 app.listen(process.env.PORT || 3000);
 

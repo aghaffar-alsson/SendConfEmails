@@ -200,7 +200,7 @@ www.alsson.com
     // ===== end mixed =====
     `--${mixedBoundary}--`,
     ""
-  ].filter(Boolean);
+  ];
 
   const rawMessage = messageParts.join("\r\n");
 

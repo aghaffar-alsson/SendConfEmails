@@ -110,6 +110,9 @@ const gmail = google.gmail({
 //   }
 // });
 
+function encodeMimeWord(str) {
+  return `=?UTF-8?B?${Buffer.from(str, "utf8").toString("base64")}?=`;
+}
 async function sendEmail({ to, bcc, subject, html }) {
   const mixedBoundary = "mixed_" + Date.now();
   const relatedBoundary = "related_" + Date.now();
@@ -136,7 +139,7 @@ www.alsson.com
     `From: El Alsson School <${process.env.FromEmailAddress}>`,
     `To: ${to}`,
     bcc ? `Bcc: ${bcc}` : "",
-    `Subject: ${subject}`,
+    `Subject: ${encodeMimeWord(subject)}`,
     `Date: ${new Date().toUTCString()}`,
     `Message-ID: <${Date.now()}.${Math.random().toString(36).slice(2)}@elalsson.local>`,
     `MIME-Version: 1.0`,

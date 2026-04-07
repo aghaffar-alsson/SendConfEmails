@@ -45,6 +45,14 @@ process.on("unhandledRejection", (reason) => {
 });
 
 let pool;
+
+async function getPool() {
+  if (!pool) {
+    pool = await sql.connect(sqlConfig);
+  }
+  return pool;
+}
+
 // Create a function to get the SQL connection pool
 (async () => {
   try {

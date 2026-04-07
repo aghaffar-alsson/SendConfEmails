@@ -35,14 +35,26 @@ const sqlConfig = {
   requestTimeout: 15000,
 };
 
-let pool;
 
-async function getPool() {
-  if (!pool) {
-    pool = await sql.connect(sqlConfig);
+process.on("uncaughtException", (err) => {
+  console.error("UNCAUGHT EXCEPTION:", err);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("UNHANDLED REJECTION:", reason);
+});
+
+let pool;
+// Create a function to get the SQL connection pool
+(async () => {
+  try {
+    const pool = await getPool();
+    console.log("SQL connected successfully");
+  } catch (err) {
+    console.error("SQL connection failed on startup:", err);
   }
-  return pool;
-}
+})();
+
 
 const oAuth2Client = new google.auth.OAuth2(
   process.env.CLIENT_ID,
@@ -504,8 +516,21 @@ cron.schedule("*/2 * * * *", async () => {
 
 console.log("📧 loop APS ended");
 
-app.listen(process.env.PORT || 3000);
+const PORT = process.env.PORT || 3000;
+app.get("/", (req, res) => {
+  res.send("Email cron service is running");
+});
 
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    ok: true,
+    time: new Date().toISOString()
+  });
+});
+
+app.listen(PORT, () => {
+  console.log(`Email service running on port ${PORT}`);
+});
 
 
 

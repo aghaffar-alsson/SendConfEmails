@@ -524,7 +524,7 @@ cron.schedule("*/2 * * * *", async () => {
 
 // Run every 1 hour at minute 0
 //HERE TO EXECUTE THE STORED PROCEDURE TO FILL THE WHOLE REQUIRED DATA SET FOR THE TWO ACADEMIC YEARS
-cron.schedule("0 * * * *", async () => {
+cron.schedule("*/5 * * * *", async () => {
   const VITE_YEAR_NO = process.env.VITE_YEAR_NO 
   if (!VITE_YEAR_NO){
     console.error("VITE_YEAR_NO is not set in environment variables");

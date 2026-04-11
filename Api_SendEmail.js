@@ -547,7 +547,7 @@ cron.schedule("*/5 * * * *", async () => {
       // }
   } catch (err) {
     console.error('Database Error:', err);
-    res.status(500).json({ message: 'Database Error', error: err.message });
+    //res.status(500).json({ message: 'Database Error', error: err.message });
   }});
 
 console.log("📧 loop APS ended");

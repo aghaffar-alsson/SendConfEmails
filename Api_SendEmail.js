@@ -538,6 +538,7 @@ cron.schedule("*/5 * * * *", async () => {
       .request()
       .input('cyy', sql.Int, VITE_YEAR_NO)
       .execute('FillMtrx');
+      console.log("Stored procedure executed successfully for year:", VITE_YEAR_NO);
       // const records = result.recordset;
       // console.log("records:", records);
       // if (records && records.length > 0) {

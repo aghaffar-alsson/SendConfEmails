@@ -525,31 +525,48 @@ cron.schedule("*/2 * * * *", async () => {
 // Run every 1 hour at minute 0
 //HERE TO EXECUTE THE STORED PROCEDURE TO FILL THE WHOLE REQUIRED DATA SET FOR THE TWO ACADEMIC YEARS
 cron.schedule("*/5 * * * *", async () => {
-  const VITE_YEAR_NO = process.env.VITE_YEAR_NO 
-  if (!VITE_YEAR_NO){
-    console.error("VITE_YEAR_NO is not set in environment variables");
+  const runId = Date.now();
+
+  if (isRunning) {
+    console.warn(`[${runId}] Skipping: previous run still in progress`);
     return;
   }
-  const pool = await sql.connect(sqlConfig);
+
+  const year = process.env.VITE_YEAR_NO;
+
+  if (!year) {
+    console.error(`[${runId}] VITE_YEAR_NO is not set`);
+    return;
+  }
+
+  isRunning = true;
+  console.log(`[${runId}] Starting SP execution for year ${year}`);
 
   try {
-    const pool = await sql.connect(sqlConfig);
-    const result = await pool
-      .request()
-      .input('cyy', sql.Int, VITE_YEAR_NO)
-      .execute('FillMtrx');
-      console.log("Stored procedure executed successfully for year:", VITE_YEAR_NO);
-      // const records = result.recordset;
-      // console.log("records:", records);
-      // if (records && records.length > 0) {
-      //   res.json(records); // ✅ sends array
-      // } else {
-      //   res.json([]);
-      // }
+    const pool = await getPool();
+
+    const request = pool.request();
+    request.timeout = 180000; // 3 minute for safety
+
+    const result = await request
+      .input("cyy", sql.Int, parseInt(year))
+      .execute("FillMtrx");
+
+    console.log(`[${runId}] SUCCESS`, {
+      rows: result.recordset?.length || 0,
+    });
+
   } catch (err) {
-    console.error('Database Error:', err);
-    //res.status(500).json({ message: 'Database Error', error: err.message });
-  }});
+    console.error(`[${runId}] ERROR`, err.message);
+
+    // optional: retry once
+    // await retryLogic();
+
+  } finally {
+    isRunning = false;
+    console.log(`[${runId}] Finished`);
+  }
+});
 
 console.log("📧 loop APS ended");
 

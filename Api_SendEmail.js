@@ -525,7 +525,7 @@ cron.schedule("*/2 * * * *", async () => {
 // Run every 1 hour at minute 0
 //HERE TO EXECUTE THE STORED PROCEDURE TO FILL THE WHOLE REQUIRED DATA SET FOR THE TWO ACADEMIC YEARS
 let isRunning = false;
-cron.schedule("*/5 * * * *", async () => {
+cron.schedule("0 0 * * *", async () => {
   const runId = Date.now();
 
   if (isRunning) {

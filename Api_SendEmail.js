@@ -522,10 +522,10 @@ cron.schedule("*/2 * * * *", async () => {
   }
 });
 
-// Run every 1 hour at minute 0
-//HERE TO EXECUTE THE STORED PROCEDURE TO FILL THE WHOLE REQUIRED DATA SET FOR THE TWO ACADEMIC YEARS
+//START CALLING PROCEDURES FILL ALL DATA FROM EA-FINANCE SERVER (LOCAL SERVER) INTO EA-FEESWEB SERVER (REOMOTE SERVER - PUBLISHED OVER THE INTERNET) 
 let isRunning = false;
-cron.schedule("0 0 * * *", async () => {
+//fill students info Run every 30 minutes
+cron.schedule("*/30 * * * *", async () => {
   const runId = Date.now();
 
   if (isRunning) {
@@ -547,27 +547,164 @@ cron.schedule("0 0 * * *", async () => {
     const pool = await getPool();
 
     const request = pool.request();
-    request.timeout = 180000; // 3 minute for safety
+    // request.timeout = 180000; // 3 minute for safety
 
     const result = await request
       .input("cyy", sql.Int, parseInt(year))
-      .execute("FillMtrx");
+      .execute("FillStudentInfo");
 
-    console.log(`[${runId}] SUCCESS`, {
+    console.log(`[${runId}] SUCCESS_STUDENTS_INFO`, {
       rows: result.recordset?.length || 0,
     });
 
   } catch (err) {
-    console.error(`[${runId}] ERROR`, err.message);
+    console.error(`[${runId}] ERROR_STUDENTS_INFO`, err.message);
 
     // optional: retry once
     // await retryLogic();
 
   } finally {
     isRunning = false;
-    console.log(`[${runId}] Finished`);
+    console.log(`[${runId}] Finished_STUDENTS_INFO`);
   }
 });
+
+//fill additional fees (ministry , cambridge , trips) Run every 40 minutes 
+cron.schedule("*/40 * * * *", async () => {
+  const runId = Date.now();
+
+  if (isRunning) {
+    console.warn(`[${runId}] Skipping: previous run still in progress`);
+    return;
+  }
+
+  const year = process.env.VITE_YEAR_NO;
+
+  if (!year) {
+    console.error(`[${runId}] VITE_YEAR_NO is not set`);
+    return;
+  }
+
+  isRunning = true;
+  console.log(`[${runId}] Starting Additional Fees SP execution for year ${year}`);
+
+  try {
+    const pool = await getPool();
+
+    const request = pool.request();
+    //request.timeout = 70000; // 1.1 minute for safety
+
+    const result = await request
+      .input("cyy", sql.Int, parseInt(year))
+      .execute("FillAdditional");
+
+    console.log(`[${runId}] SUCCESS_ADDITIONAL_FEES`, {
+      rows: result.recordset?.length || 0,
+    });
+
+  } catch (err) {
+    console.error(`[${runId}] ERROR_ADDITIONAL_FEES`, err.message);
+
+    // optional: retry once
+    // await retryLogic();
+
+  } finally {
+    isRunning = false;
+    console.log(`[${runId}] Finished_ADDITIONAL_FEES`);
+  }
+});
+
+//fill payments (master & details tables) Run every 20 minutes 
+cron.schedule("*/20 * * * *", async () => {
+  const runId = Date.now();
+
+  if (isRunning) {
+    console.warn(`[${runId}] Skipping: previous run still in progress`);
+    return;
+  }
+
+  const year = process.env.VITE_YEAR_NO;
+
+  if (!year) {
+    console.error(`[${runId}] VITE_YEAR_NO is not set`);
+    return;
+  }
+
+  isRunning = true;
+  console.log(`[${runId}] Starting Payments SP execution for year ${year}`);
+
+  try {
+    const pool = await getPool();
+
+    const request = pool.request();
+    //request.timeout = 70000; // 1.1 minute for safety
+
+    const result = await request
+      .input("cyy", sql.Int, parseInt(year))
+      .execute("FillPayments");
+
+    console.log(`[${runId}] SUCCESS_PAYMENTS`, {
+      rows: result.recordset?.length || 0,
+    });
+
+  } catch (err) {
+    console.error(`[${runId}] ERROR_PAYMENTS`, err.message);
+
+    // optional: retry once
+    // await retryLogic();
+
+  } finally {
+    isRunning = false;
+    console.log(`[${runId}] Finished_PAYMENTS`);
+  }
+});
+
+
+//fill fees matrix Run every hour at minute 0
+cron.schedule("0 0 * * *", async () => {
+  const runId = Date.now();
+
+  if (isRunning) {
+    console.warn(`[${runId}] Skipping: previous run still in progress`);
+    return;
+  }
+
+  const year = process.env.VITE_YEAR_NO;
+
+  if (!year) {
+    console.error(`[${runId}] VITE_YEAR_NO is not set`);
+    return;
+  }
+
+  isRunning = true;
+  console.log(`[${runId}] Starting Fees Matrix SP execution for year ${year}`);
+
+  try {
+    const pool = await getPool();
+
+    const request = pool.request();
+    request.timeout = 70000; // 1.1 minute for safety
+
+    const result = await request
+      .input("cyy", sql.Int, parseInt(year))
+      .execute("FillMtrx");
+
+    console.log(`[${runId}] SUCCESS_FEES_MATRIX`, {
+      rows: result.recordset?.length || 0,
+    });
+
+  } catch (err) {
+    console.error(`[${runId}] ERROR_FEES_MATRIX`, err.message);
+
+    // optional: retry once
+    // await retryLogic();
+
+  } finally {
+    isRunning = false;
+    console.log(`[${runId}] Finished_FEES_MATRIX`);
+  }
+});
+
 
 console.log("📧 loop APS ended");
 

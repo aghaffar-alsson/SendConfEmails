@@ -522,6 +522,34 @@ cron.schedule("*/2 * * * *", async () => {
   }
 });
 
+// Run every 1 hour at minute 0
+//HERE TO EXECUTE THE STORED PROCEDURE TO FILL THE WHOLE REQUIRED DATA SET FOR THE TWO ACADEMIC YEARS
+cron.schedule("0 * * * *", async () => {
+  const VITE_YEAR_NO = process.env.VITE_YEAR_NO 
+  if (!VITE_YEAR_NO){
+    console.error("VITE_YEAR_NO is not set in environment variables");
+    return;
+  }
+  const pool = await sql.connect(sqlConfig);
+
+  try {
+    const pool = await sql.connect(sqlConfig);
+    const result = await pool
+      .request()
+      .input('cyy', sql.Int, VITE_YEAR_NO)
+      .execute('FillMtrx');
+      // const records = result.recordset;
+      // console.log("records:", records);
+      // if (records && records.length > 0) {
+      //   res.json(records); // ✅ sends array
+      // } else {
+      //   res.json([]);
+      // }
+  } catch (err) {
+    console.error('Database Error:', err);
+    res.status(500).json({ message: 'Database Error', error: err.message });
+  }});
+
 console.log("📧 loop APS ended");
 
 const PORT = process.env.PORT || 3000;

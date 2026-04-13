@@ -32,7 +32,7 @@ const sqlConfig = {
     encrypt: false,
     trustServerCertificate: true,
   },
-  requestTimeout: 150000, // 2.5 minute for safety
+  requestTimeout: 180000, // 3 minute for safety
   connectionTimeout: 30000 // 30 seconds for initial connection
 };
 

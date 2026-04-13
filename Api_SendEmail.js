@@ -651,6 +651,11 @@ app.get("/sync-payments", async (req, res) => {
       rows: result.recordset?.length || 0,
     });
 
+    return res.json({
+      ok: true,
+      processed: result.recordset?.length || 0
+    });
+
   } catch (err) {
     console.error(`[${runId}] ERROR_PAYMENTS`, err.message);
 

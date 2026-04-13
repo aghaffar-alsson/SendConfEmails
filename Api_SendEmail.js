@@ -479,7 +479,7 @@ let running = {
 //fill students info Run every 30 minutes
 app.get("/sync-students-info", async (req, res) => {
   const runId = Date.now();
-
+  console.log(req.query.key, process.env.CRON_SECRET);
   // 🔐 Security
   if (req.query.key !== process.env.CRON_SECRET) {
     return res.status(403).json({ ok: false, message: "Forbidden" });

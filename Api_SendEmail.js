@@ -32,7 +32,8 @@ const sqlConfig = {
     encrypt: false,
     trustServerCertificate: true,
   },
-  requestTimeout: 80000, // 80 seconds - just for safety, the actual queries are much faster
+  requestTimeout: 150000, // 2.5 minute for safety
+  connectionTimeout: 30000 // 30 seconds for initial connection
 };
 
 
@@ -44,13 +45,23 @@ process.on("unhandledRejection", (reason) => {
   console.error("UNHANDLED REJECTION:", reason);
 });
 
-let pool;
+let poolPromise;
 
 async function getPool() {
-  if (!pool) {
-    pool = await sql.connect(sqlConfig);
+  if (!poolPromise) {
+    poolPromise = new sql.ConnectionPool(sqlConfig)
+      .connect()
+      .then(pool => {
+        console.log("SQL connected successfully");
+        return pool;
+      })
+      .catch(err => {
+        poolPromise = null;
+        console.error("SQL connection failed:", err);
+        throw err;
+      });
   }
-  return pool;
+  return poolPromise;
 }
 
 // Create a function to get the SQL connection pool
@@ -79,59 +90,20 @@ const gmail = google.gmail({
   auth: oAuth2Client,
 });
 
-// async function sendEmail({ to, bcc, subject, html }) {
-//   const boundary = "boundary_xyz";
-
-//   const messageParts = [
-//     `From: El Alsson School <${process.env.FromEmailAddress}>`,
-//     `To: ${to}`,
-//     bcc ? `Bcc: ${bcc}` : "",
-//     `Subject: ${subject}`,
-//     `MIME-Version: 1.0`,
-//     `Content-Type: multipart/related; boundary=${boundary}`,
-//     "",
-//     `--${boundary}`,
-//     `Content-Type: text/html; charset="UTF-8"`,
-//     "",
-//     html,
-//     `--${boundary}`,
-//     `Content-Type: image/jpeg`,
-//     `Content-Transfer-Encoding: base64`,
-//     `Content-ID: <schoollogo>`,
-//     `Content-Disposition: inline; filename="logo.jpg"`,
-//     "",
-//     logoBase64,
-//     `--${boundary}--`
-//   ].filter(Boolean);
-
-//   const rawMessage = messageParts.join("\n");
-
-//   const encodedMessage = Buffer.from(rawMessage)
-//     .toString("base64")
-//     .replace(/\+/g, "-")
-//     .replace(/\//g, "_")
-//     .replace(/=+$/, "");
-
-//   await gmail.users.messages.send({
-//     userId: "me",
-//     requestBody: { raw: encodedMessage },
-//   });
-// }
-
-
-// Outlook or Internal SMTP
-// const transporter = nodemailer.createTransport({
-//   host: "smtp.gmail.com",
-//   port: 587,
-//   secure: false,
-//   auth: {
-//     user: process.env.FromEmailAddress,
-//     pass: process.env.AppPswd,
-//   }
-// });
-
 function encodeMimeWord(str) {
   return `=?UTF-8?B?${Buffer.from(str, "utf8").toString("base64")}?=`;
+}
+async function sendWithRetry(to, bcc, subject, html, retries = 2) {
+  try {
+    await sendEmail({ to, bcc, subject, html });
+  } catch (err) {
+    if (retries > 0) {
+      console.warn("Retrying email...", retries);
+      await new Promise(r => setTimeout(r, 2000));
+      return sendWithRetry({ to, bcc, subject, html }, retries - 1);
+    }
+    throw err;
+  }
 }
 async function sendEmail({ to, bcc, subject, html }) {
   const mixedBoundary = "mixed_" + Date.now();
@@ -274,7 +246,7 @@ app.get("/run-email-receipts", async (req, res) => {
           <p>Dear Parent,</p>
           <p>Your online payment through Amazon Payment Services (AWS - PayFort) has been successfully processed.</p>
           <p><strong>Amounting:</strong> ${(row.amount / 100).toFixed(2)} EGP</p>
-          <p><strong>Date:</strong> ${(row.actiondate)} EGP</p>
+          <p><strong>Date:</strong> ${new Date(row.actiondate).toLocaleString()}</p>
           <p><strong>Your FORT ID:</strong> ${row.fort_id}</p>
           <p><strong>Transaction Reference:</strong> ${row.merchant_reference}</p>
           <p><strong>Transaction Status:</strong> ${row.response_message}</p>
@@ -288,15 +260,16 @@ app.get("/run-email-receipts", async (req, res) => {
           <p>www.alsson.com</p>
           </div>
           <div style="margin-top:20px; border-top:1px solid #ccc; padding-top:10px;">
-          <img src="cid:schoollogo" alt="School Logo" style="height:10px; width:10px; display:block; margin:auto;">
+          <img src="cid:schoollogo" style="height:80px; display:block; margin:auto;">
           </div>
         `;
         console.log(html)        
-        await sendEmail({
+        await sendWithRetry({
           to: row.customer_email,
           bcc: process.env.BccEmailAddress,
           subject: "Payment Receipt",
-          html: html
+          html: html,
+          retries: 2
         });
 
         await pool.request()
@@ -429,15 +402,16 @@ app.get("/run-email-confirmation", async (req, res) => {
           <p>www.alsson.com</p>
         </div>
         <div style="margin-top:20px; border-top:1px solid #ccc; padding-top:10px;">
-          <img src="cid:schoollogo" alt="School Logo" style="height:10px; width:10px; display:block; margin:auto;">
+          <img src="cid:schoollogo" style="height:80px; display:block; margin:auto;">
         </div>
         `;
 
-        await sendEmail({
+        await sendWithRetry({
           to: row.customer_email,
           bcc: process.env.BccEmailAddress,
           subject: `Payment Confirmation for ${row.s_code} ${row.student_name} - ${topic}`,
-          html: html
+          html: html,
+          retries: 2
         });
 
         await pool.request()
@@ -620,18 +594,24 @@ app.get("/sync-additional-fees", async (req, res) => {
 
 //fill payments (master & details tables) Run every 20 minutes 
 app.get("/sync-payments", async (req, res) => {
+  // 🔐 Security
+  if (req.query.key !== process.env.CRON_SECRET) {
+    return res.status(403).json({ ok: false, message: "Forbidden" });
+  }
+
   const runId = Date.now();
 
+  // ⛔ Prevent overlap
   if (running.payments) {
-    console.warn(`[${runId}] Skipping: previous run still in progress`);
-    return;
+    console.warn(`[${runId}] Skipping: payments service is already running`);
+    return res.status(429).json({ ok: false, message: "Payments service is already running" });
   }
 
   const year = process.env.VITE_YEAR_NO;
 
   if (!year) {
     console.error(`[${runId}] VITE_YEAR_NO is not set`);
-    return;
+    return res.status(400).json({ ok: false, message: "Academic year number not set in .env file" });
   }
 
   running.payments = true;
@@ -641,13 +621,13 @@ app.get("/sync-payments", async (req, res) => {
     const pool = await getPool();
 
     const request = pool.request();
-    //request.timeout = 70000; // 1.1 minute for safety
+    request.timeout = 90000; // 1.5 minute for safety
 
     const result = await request
       .input("cyy", sql.Int, parseInt(year))
       .execute("FillPayments");
 
-    console.log(`[${runId}] SUCCESS_PAYMENTS`, {
+      console.log(`[${runId}] SUCCESS_PAYMENTS`, {
       rows: result.recordset?.length || 0,
     });
 
@@ -657,12 +637,13 @@ app.get("/sync-payments", async (req, res) => {
     });
 
   } catch (err) {
-    console.error(`[${runId}] ERROR_PAYMENTS`, err.message);
+  console.error(`[${runId}] ERROR_PAYMENTS`, err.message);
 
-    // optional: retry once
-    // await retryLogic();
-
-  } finally {
+  return res.status(500).json({
+    ok: false,
+    error: err.message
+  });
+} finally {
     running.payments = false;
     console.log(`[${runId}] Finished_PAYMENTS`);
   }

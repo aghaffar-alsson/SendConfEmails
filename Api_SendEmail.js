@@ -1,8 +1,8 @@
 import express from "express";
-import  sql from "mssql";
-import  cron from "node-cron"
+import sql from "mssql";
+import cron from "node-cron"
 import dotenv from "dotenv"
-import  path from "path"
+import path from "path"
 import fs from "fs"
 import { log } from "console";
 import { google } from "googleapis";
@@ -32,7 +32,7 @@ const sqlConfig = {
     encrypt: false,
     trustServerCertificate: true,
   },
-  requestTimeout: 180000,
+  requestTimeout: 15000,
 };
 
 
@@ -247,307 +247,291 @@ www.alsson.com
 console.log("Email:", process.env.FromEmailAddress);
 console.log("App Password exists?", process.env.AppPswd);
 
-
-// Run every minute
-// cron.schedule("*/1 * * * *", async () => {
-//   const pool = await sql.connect(sqlConfig);
-//   const result = await pool.request()
-//     .query(`SELECT * FROM OnlinePayfortLog WHERE emlsnt = 0 order by iden`);
-//   console.log("📧 select rows");
-//   for (const row of result.recordset) {
-//     try {
-//       const html = `
-//       <div style="font-family: Tahoma, Helvetica, sans-serif; font-size: 14px; color: #333;">
-//       <h2>Payment Receipt</h2>
-//       <p>Dear Parent,</p>
-//       <p>Your online payment through Amazon Payment Services (AWS - PayFort) has been successfully processed.</p>
-//       <p><strong>Amounting:</strong> ${(row.amount / 100).toFixed(2)} EGP</p>
-//       <p><strong>Date:</strong> ${(row.actiondate)} EGP</p>
-//       <p><strong>Your FORT ID:</strong> ${row.fort_id}</p>
-//       <p><strong>Transaction Reference:</strong> ${row.merchant_reference}</p>
-//       <p><strong>Transaction Status:</strong> ${row.response_message}</p>
-//       <br/>
-//       <p>Thank you for your purchase.</p>
-//       <p></p>
-//       <p>Finance Department</p>
-//       <p>El Alsson British & American International School - Newgiza</p>
-//       <p>Kilo 22 Misr Alexandria Desert Road - Compound Newgiza</p>
-//       <p>Tel: 002-02-38270800</p>
-//       <p>www.alsson.com</p>
-//       </div>
-//       <div style="margin-top:20px; border-top:1px solid #ccc; padding-top:10px;">
-//       <img src="cid:schoollogo" alt="School Logo" style="height:10px; width:10px; display:block; margin:auto;">
-//       </div>
-//     `;
-//       console.log("📧 loop ended");
-//       await transporter.sendMail({
-//         from: process.env.FromEmailAddress,
-//         to: row.customer_email,
-//         bcc: process.env.BccEmailAddress,
-//         // bcc: "feesemails@alsson.com",
-//         subject: "Payment Receipt",
-//         html,
-//         attachments: [
-//           {
-//             filename: "newgiza-logo.jpg",
-//             path: logoPath,
-//             cid: "schoollogo" // same as used in <img src="cid:schoollogo">
-//           }
-//         ],
-//       });
-//       await pool.request().query(`
-//         UPDATE OnlinePayfortLog SET emlsnt = 1 WHERE iden = ${row.iden}
-//       `);
-
-//       console.log("Email sent:", row.customer_email);
-
-//     } catch (err) {
-//       console.error("Email error:", err);
-//     }
-//   }
-// });
-
-cron.schedule("*/1 * * * *", async () => {
-  const pool = await getPool();
-
-  const result = await pool.request()
-    .query(`SELECT * FROM OnlinePayfortLog WHERE emlsnt = 0 ORDER BY iden`);
-
-  for (const row of result.recordset) {
-    try {
-      const html = `
-      <div style="font-family: Tahoma, Helvetica, sans-serif; font-size: 14px; color: #333;">
-      <h2>Payment Receipt</h2>
-      <p>Dear Parent,</p>
-      <p>Your online payment through Amazon Payment Services (AWS - PayFort) has been successfully processed.</p>
-      <p><strong>Amounting:</strong> ${(row.amount / 100).toFixed(2)} EGP</p>
-      <p><strong>Date:</strong> ${(row.actiondate)} EGP</p>
-      <p><strong>Your FORT ID:</strong> ${row.fort_id}</p>
-      <p><strong>Transaction Reference:</strong> ${row.merchant_reference}</p>
-      <p><strong>Transaction Status:</strong> ${row.response_message}</p>
-      <br/>
-      <p>Thank you for your purchase.</p>
-      <p></p>
-      <p>Finance Department</p>
-      <p>El Alsson British & American International School - Newgiza</p>
-      <p>Kilo 22 Misr Alexandria Desert Road - Compound Newgiza</p>
-      <p>Tel: 002-02-38270800</p>
-      <p>www.alsson.com</p>
-      </div>
-      <div style="margin-top:20px; border-top:1px solid #ccc; padding-top:10px;">
-      <img src="cid:schoollogo" alt="School Logo" style="height:10px; width:10px; display:block; margin:auto;">
-      </div>
-    `;
-console.log(html)
-      await sendEmail({
-        to: row.customer_email,
-        bcc: process.env.BccEmailAddress,
-        subject: "Payment Receipt",
-        html
-      });
-
-      await pool.request()
-        .query(`UPDATE OnlinePayfortLog SET emlsnt = 1 WHERE iden = ${row.iden}`);
-
-      console.log("Receipt sent:", row.customer_email);
-
-    } catch (err) {
-      console.error("Receipt error:", err);
-    }
+let isRunningEmailJob = false;
+//Send APS receipt for the parent just to confirm the success of the payment process, this should run every 1 minute
+app.get("/run-email-receipts", async (req, res) => {
+  if (req.query.key !== process.env.CRON_SECRET) {
+    return res.status(403).send("Forbidden");
   }
-});
 
-// Run every 5 minutes
-cron.schedule("*/2 * * * *", async () => {
-  const pool = await sql.connect(sqlConfig);
+  if (isRunningEmailJob) {
+    return res.status(429).json({ ok: false, message: "Already running" });
+  }
 
-  const result = await pool.request().query(`
-    SELECT ap.iden, ap.facename, ap.InstCode, ap.fort_id, ap.merchant_reference,
-           ap.SCHOOLID as schholno, ap.paidamount, ap.trnsdt, ap.s_code,
-           o.customer_email,
-           s.fname+' '+s.mname+' '+s.lname AS student_name 
-    FROM APSTRANS AP 
-    INNER JOIN OnlinePayfortLog o 
-      ON AP.FORT_ID = O.FORT_ID 
-     AND AP.MERCHANT_REFERENCE = O.MERCHANT_REFERENCE  
-    INNER JOIN students_info s 
-      ON s.curyear = LEFT(ap.curyear,4) 
-     AND AP.s_code = s.s_code 
-     AND AP.schoolid = s.typecode  
-    WHERE AP.SETTLED = 1 
-      AND AP.confrmd = 0 
-    ORDER BY ap.iden
-  `);
+  isRunningEmailJob = true;
 
-  console.log("📧 select rows from APSTRANS");
-  console.log("Number of records to process:", result.recordset.length);
-  for (const row of result.recordset) {
-    let topic = "";
-    let absface = "";
-    let trmmno = 0;
-    let faceYear = "";
+  try {
+    const pool = await getPool();
 
-    const parts = (row.facename || "").split("_");
-    absface = (parts[0] || "").trim();
-    trmmno = Number(parts[1] || 0);
-    faceYear = (parts[2] || "").trim();
+    const result = await pool.request()
+      .query(`SELECT TOP 20 * FROM OnlinePayfortLog WHERE emlsnt = 0 ORDER BY iden`);
 
-    console.log("facename:", row.facename);
-    console.log("parts:", parts);
-    console.log("absface:", absface);
-    console.log("trmmno:", trmmno);
-    console.log("faceYear:", faceYear);
+    for (const row of result.recordset) {
+      try {
+          const html = `
+          <div style="font-family: Tahoma, Helvetica, sans-serif; font-size: 14px; color: #333;">
+          <h2>Payment Receipt</h2>
+          <p>Dear Parent,</p>
+          <p>Your online payment through Amazon Payment Services (AWS - PayFort) has been successfully processed.</p>
+          <p><strong>Amounting:</strong> ${(row.amount / 100).toFixed(2)} EGP</p>
+          <p><strong>Date:</strong> ${(row.actiondate)} EGP</p>
+          <p><strong>Your FORT ID:</strong> ${row.fort_id}</p>
+          <p><strong>Transaction Reference:</strong> ${row.merchant_reference}</p>
+          <p><strong>Transaction Status:</strong> ${row.response_message}</p>
+          <br/>
+          <p>Thank you for your purchase.</p>
+          <p></p>
+          <p>Finance Department</p>
+          <p>El Alsson British & American International School - Newgiza</p>
+          <p>Kilo 22 Misr Alexandria Desert Road - Compound Newgiza</p>
+          <p>Tel: 002-02-38270800</p>
+          <p>www.alsson.com</p>
+          </div>
+          <div style="margin-top:20px; border-top:1px solid #ccc; padding-top:10px;">
+          <img src="cid:schoollogo" alt="School Logo" style="height:10px; width:10px; display:block; margin:auto;">
+          </div>
+        `;
+        console.log(html)        
+        await sendEmail({
+          to: row.customer_email,
+          bcc: process.env.BccEmailAddress,
+          subject: "Payment Receipt",
+          html: html
+        });
 
-    try {
-      switch (absface) {
-        case "SCHOOLFEES":
-          switch (trmmno.toString()) {
-            case '1': topic = "School Fees : April Installment" + (faceYear ? ` (${faceYear})` : ""); console.log(topic); break;
-            case '2': topic = "School Fees : September Installment" + (faceYear ? ` (${faceYear})` : ""); console.log(topic); break;
-            case '3': topic = "School Fees : November Installment" + (faceYear ? ` (${faceYear})` : ""); console.log(topic); break;
-            case '4': topic = "School Fees : January Installment" + (faceYear ? ` (${faceYear})` : ""); console.log(topic); break;
-            default: topic = `School Fees : Installment ${trmmno}` + (faceYear ? ` (${faceYear})` : ""); console.log(topic); break;
-          }
-          break;
+        await pool.request()
+          .input("iden", sql.Int, row.iden)
+          .query(`UPDATE OnlinePayfortLog SET emlsnt = 1 WHERE iden = @iden`);
 
-        case "EDXL":
-          switch (row.schholno) {
-            case 1: topic = "DP2 Exams Fees"+ (faceYear ? ` (${faceYear})` : ""); break;
-            case 2: topic = "Cambridge & Edexcel Exams Fees" + (faceYear ? ` (${faceYear})` : ""); break;
-            default: topic = "Exam Fees" + (faceYear ? ` (${faceYear})` : ""); break;
-          }
-          break;
+        console.log("Receipt sent:", row.customer_email);
 
-        case "MINISTRY": {
-          topic = "Ministry Fees - ";
-          const getres = await pool.request().query(`
-            SELECT facename 
-            FROM ministry_faces 
-            WHERE faceid = ${trmmno}
-          `);
-
-          if (getres.recordset.length > 0) {
-            topic += getres.recordset[0].facename;
-          } else {
-            topic += `Face ID ${trmmno}`;
-          }
-          break;
-        }
-
-        case "TRIP": {
-          topic = "Trips Fees - ";
-          const tbnmm = row.schholno === 1 ? "AM_TRIPS" : "BR_TRIPS";
-
-          console.log("tbnmm:", tbnmm);
-          console.log("schoolid:", row.schholno);
-
-          const getres_1 = await pool.request().query(`
-            SELECT tripname 
-            FROM ${tbnmm} 
-            WHERE tripid = ${trmmno}
-          `);
-
-          if (getres_1.recordset.length > 0) {
-            topic += getres_1.recordset[0].tripname;
-            console.log(getres_1.recordset[0].tripname);
-          } else {
-            topic += `Trip ID ${trmmno}`;
-          }
-
-          console.log("topic after TRIP:", topic);
-          break;
-        }
-
-        default:
-          topic = row.facename || "Payment";
-          break;
+      } catch (err) {
+        console.error("Row error:", err);
       }
-//console.log("Determined topic:", topic);
-      const html = `
-      <div style="font-family: Tahoma, Helvetica, sans-serif; font-size: 14px; color: #333;">
-        <h2>Payment Confirmation</h2>
-        <p>Dear Parent,</p>
-        <p>We confirm receiving of your online payment through Amazon Payment Services (AWS - PayFort).</p>
-        <p><strong>Amounting: ${(row.paidamount).toFixed(2)} EGP</strong></p>
-        <p>For: ${topic}</p>
-        <p>On date: ${row.trnsdt}</p>
-        <p>For student (ID: ${row.s_code} Name: ${row.student_name})</p>
-        <p>Your FORT ID: ${row.fort_id}</p>
-        <p>Transaction Reference: ${row.merchant_reference}</p>
-        <p>Receipts will be issued on cashiers office within 3 working days.</p>
-        <br/>
-        <p>Thank you for your payment.</p>
-        <p>Finance Department</p>
-        <p>El Alsson British & American International School - Newgiza</p>
-        <p>Kilo 22 Misr Alexandria Desert Road - Compound Newgiza</p>
-        <p>Tel: 002-02-38270800</p>
-        <p>www.alsson.com</p>
-      </div>
-      <div style="margin-top:20px; border-top:1px solid #ccc; padding-top:10px;">
-        <img src="cid:schoollogo" alt="School Logo" style="height:10px; width:10px; display:block; margin:auto;">
-      </div>
-      `;
-
-    //   await transporter.sendMail({
-    //     from: process.env.FromEmailAddress,
-    //     to: row.customer_email,
-    //     bcc: process.env.BccEmailAddress,
-    //     // bcc: "feesemails@alsson.com",
-    //     subject: "Payment Confirmation for " + row.s_code + " " + row.student_name,
-    //     html,
-    //     attachments: [
-    //       {
-    //         filename: "newgiza-logo.jpg",
-    //         path: logoPath,
-    //         cid: "schoollogo" // same as used in <img src="cid:schoollogo">
-    //       }
-    //     ],
-    //   });
-    console.log(html);
-    await sendEmail({
-    to: row.customer_email,
-    bcc: process.env.BccEmailAddress,
-    subject: `Payment Confirmation for ${row.s_code} ${row.student_name} - ${topic}`,
-    html
-    });
-    await pool.request().query(`
-        UPDATE apstrans SET confrmd = 1 WHERE iden = ${row.iden}
-      `);
-
-      console.log("Email sent:", row.customer_email);
-
-    } catch (err) {
-      console.error("Email error:", err);
     }
+    res.json({
+      ok: true,
+      processed: result.recordset.length
+    });
+  } catch (err) {
+    console.error("Job error:", err);
+    res.status(500).json({ ok: false });
+
+  } finally {
+    isRunningEmailJob = false;
   }
 });
 
-//START CALLING PROCEDURES FILL ALL DATA FROM EA-FINANCE SERVER (LOCAL SERVER) INTO EA-FEESWEB SERVER (REOMOTE SERVER - PUBLISHED OVER THE INTERNET) 
-let isRunning = false;
+let isRunningConfirmationJob = false;
+// Send confirmation email for the parent to confirm that his transaction was received by the school and inform him that the receipts are being processed and will be issued within 3 working days
+// Run every 2 minutes
+app.get("/run-email-confirmation", async (req, res) => {
+  // 🔐 Security
+  if (req.query.key !== process.env.CRON_SECRET) {
+    return res.status(403).send("Forbidden");
+  }
+
+  // 🔁 Prevent overlap
+  if (isRunningConfirmationJob) {
+    return res.status(429).json({ ok: false, message: "Already running" });
+  }
+
+  isRunningConfirmationJob = true;
+
+  try {
+    const pool = await getPool();
+
+    const result = await pool.request().query(`
+      SELECT TOP 20
+        ap.iden, ap.facename, ap.InstCode, ap.fort_id, ap.merchant_reference,
+        ap.SCHOOLID as schholno, ap.paidamount, ap.trnsdt, ap.s_code,
+        o.customer_email,
+        s.fname+' '+s.mname+' '+s.lname AS student_name 
+      FROM APSTRANS AP 
+      INNER JOIN OnlinePayfortLog o 
+        ON AP.FORT_ID = O.FORT_ID 
+       AND AP.MERCHANT_REFERENCE = O.MERCHANT_REFERENCE  
+      INNER JOIN students_info s 
+        ON s.curyear = LEFT(ap.curyear,4) 
+       AND AP.s_code = s.s_code 
+       AND AP.schoolid = s.typecode  
+      WHERE AP.SETTLED = 1 
+        AND AP.confrmd = 0 
+      ORDER BY ap.iden
+    `);
+
+    console.log("Records to process:", result.recordset.length);
+
+    for (const row of result.recordset) {
+      try {
+        let topic = "";
+        const parts = (row.facename || "").split("_");
+
+        const absface = (parts[0] || "").trim();
+        const trmmno = Number(parts[1] || 0);
+        const faceYear = (parts[2] || "").trim();
+
+        switch (absface) {
+          case "SCHOOLFEES":
+            topic = `School Fees : Installment ${trmmno}`;
+            break;
+
+          case "EDXL":
+            topic = row.schholno === 1
+              ? "DP2 Exams Fees"
+              : "Cambridge & Edexcel Exams Fees";
+            break;
+
+          case "MINISTRY": {
+            const getres = await pool.request()
+              .input("faceid", sql.Int, trmmno)
+              .query(`SELECT facename FROM ministry_faces WHERE faceid = @faceid`);
+
+            topic = "Ministry Fees - " +
+              (getres.recordset[0]?.facename || `Face ID ${trmmno}`);
+            break;
+          }
+
+          case "TRIP": {
+            const tableName = row.schholno === 1 ? "AM_TRIPS" : "BR_TRIPS";
+
+            const getres = await pool.request()
+              .input("tripid", sql.Int, trmmno)
+              .query(`SELECT tripname FROM ${tableName} WHERE tripid = @tripid`);
+
+            topic = "Trips Fees - " +
+              (getres.recordset[0]?.tripname || `Trip ID ${trmmno}`);
+            break;
+          }
+
+          default:
+            topic = row.facename || "Payment";
+        }
+
+        const html = `
+        <div style="font-family: Tahoma, Helvetica, sans-serif; font-size: 14px; color: #333;">
+          <h2>Payment Confirmation</h2>
+          <p>Dear Parent,</p>
+          <p>We confirm receiving of your online payment through Amazon Payment Services (AWS - PayFort).</p>
+          <p><strong>Amounting: ${(row.paidamount).toFixed(2)} EGP</strong></p>
+          <p>For: ${topic}</p>
+          <p>On date: ${row.trnsdt}</p>
+          <p>For student (ID: ${row.s_code} Name: ${row.student_name})</p>
+          <p>Your FORT ID: ${row.fort_id}</p>
+          <p>Transaction Reference: ${row.merchant_reference}</p>
+          <p>Receipts will be issued on cashiers office within 3 working days.</p>
+          <br/>
+          <p>Thank you for your payment.</p>
+          <p>Finance Department</p>
+          <p>El Alsson British & American International School - Newgiza</p>
+          <p>Kilo 22 Misr Alexandria Desert Road - Compound Newgiza</p>
+          <p>Tel: 002-02-38270800</p>
+          <p>www.alsson.com</p>
+        </div>
+        <div style="margin-top:20px; border-top:1px solid #ccc; padding-top:10px;">
+          <img src="cid:schoollogo" alt="School Logo" style="height:10px; width:10px; display:block; margin:auto;">
+        </div>
+        `;
+
+        await sendEmail({
+          to: row.customer_email,
+          bcc: process.env.BccEmailAddress,
+          subject: `Payment Confirmation for ${row.s_code} ${row.student_name} - ${topic}`,
+          html: html
+        });
+
+        await pool.request()
+          .input("iden", sql.Int, row.iden)
+          .query(`UPDATE apstrans SET confrmd = 1 WHERE iden = @iden`);
+
+        console.log("Email sent:", row.customer_email);
+
+      } catch (err) {
+        console.error("Row error:", err);
+      }
+    }
+
+    res.json({
+      ok: true,
+      processed: result.recordset.length
+    });
+
+  } catch (err) {
+    console.error("Job error:", err);
+    res.status(500).json({ ok: false });
+
+  } finally {
+    isRunningConfirmationJob = false;
+  }
+});
+// Run every 1 hour at minute 0
+//HERE TO EXECUTE THE STORED PROCEDURE TO FILL THE WHOLE REQUIRED DATA SET FOR THE TWO ACADEMIC YEARS
+// cron.schedule("0 * * * *", async () => {
+//   const VITE_YEAR_NO = process.env.VITE_YEAR_NO 
+//   if (!VITE_YEAR_NO){
+//     console.error("VITE_YEAR_NO is not set in environment variables");
+//     return;
+//   }
+//   const pool = await sql.connect(sqlConfig);
+
+//   try {
+//     const pool = await sql.connect(sqlConfig);
+//     const result = await pool
+//       .request()
+//       .input('cyy', sql.Int, VITE_YEAR_NO)
+//       .execute('FillMtrx');
+//       console.log("Stored procedure executed successfully for year:", VITE_YEAR_NO);
+//       // const records = result.recordset;
+//       // console.log("records:", records);
+//       // if (records && records.length > 0) {
+//       //   res.json(records); // ✅ sends array
+//       // } else {
+//       //   res.json([]);
+//       // }
+//   } catch (err) {
+//     console.error('Database Error:', err);
+//     // res.status(500).json({ message: 'Database Error', error: err.message });
+//   }});
+
+
+// let isRunning = false;
+let running = {
+  students: false,
+  additional: false,
+  payments: false,
+  matrix: false
+};
+
 //fill students info Run every 30 minutes
-cron.schedule("*/30 * * * *", async () => {
+app.get("/sync-students-info", async (req, res) => {
   const runId = Date.now();
 
-  if (isRunning) {
-    console.warn(`[${runId}] Skipping: previous run still in progress`);
-    return;
+  // 🔐 Security
+  if (req.query.key !== process.env.CRON_SECRET) {
+    return res.status(403).json({ ok: false, message: "Forbidden" });
   }
 
   const year = process.env.VITE_YEAR_NO;
 
   if (!year) {
     console.error(`[${runId}] VITE_YEAR_NO is not set`);
-    return;
+    return res.status(400).json({ ok: false, message: "Academic year number not set in .env file" });
   }
 
-  isRunning = true;
+  if (running.students) {
+    console.warn(`[${runId}] Skipping: already running`);
+    return res.status(429).json({ ok: false, message: "The students info service is already running" });
+  }
+
+  running.students = true;
+
   console.log(`[${runId}] Starting SP execution for year ${year}`);
 
   try {
     const pool = await getPool();
 
     const request = pool.request();
-    // request.timeout = 180000; // 3 minute for safety
+    request.timeout = 60000; // 1 minute - just for safety, the job is almost done during 17 seconds 
 
     const result = await request
       .input("cyy", sql.Int, parseInt(year))
@@ -557,42 +541,55 @@ cron.schedule("*/30 * * * *", async () => {
       rows: result.recordset?.length || 0,
     });
 
-  } catch (err) {
-    console.error(`[${runId}] ERROR_STUDENTS_INFO`, err.message);
+    return res.json({
+      ok: true,
+      processed: result.recordset?.length || 0
+    });
 
-    // optional: retry once
-    // await retryLogic();
+  } catch (err) {
+    console.error(`[${runId}] ERROR_STUDENTS_INFO`, err);
+
+    return res.status(500).json({
+      ok: false,
+      error: err.message
+    });
 
   } finally {
-    isRunning = false;
+    running.students = false;
     console.log(`[${runId}] Finished_STUDENTS_INFO`);
   }
 });
 
 //fill additional fees (ministry , cambridge , trips) Run every 40 minutes 
-cron.schedule("*/40 * * * *", async () => {
+app.get("/sync-additional-fees", async (req, res) => {
   const runId = Date.now();
 
-  if (isRunning) {
-    console.warn(`[${runId}] Skipping: previous run still in progress`);
-    return;
+  // 🔐 Security
+  if (req.query.key !== process.env.CRON_SECRET) {
+    return res.status(403).json({ ok: false, message: "Forbidden" });
+  }
+
+  // ⛔ Prevent overlap
+  if (running.additional) {
+    console.warn(`[${runId}] Skipping: additional fees service is already running`);
+    return res.status(429).json({ ok: false, message: "Additional fees service is already running" });
   }
 
   const year = process.env.VITE_YEAR_NO;
 
   if (!year) {
     console.error(`[${runId}] VITE_YEAR_NO is not set`);
-    return;
+    return res.status(400).json({ ok: false, message: "Academic year number not set in .env file" });
   }
 
-  isRunning = true;
+  running.additional = true;
   console.log(`[${runId}] Starting Additional Fees SP execution for year ${year}`);
 
   try {
     const pool = await getPool();
 
     const request = pool.request();
-    //request.timeout = 70000; // 1.1 minute for safety
+    request.timeout = 60000; //set the timeout period by 1 minut for safety only as the execution time is around 20 seconds
 
     const result = await request
       .input("cyy", sql.Int, parseInt(year))
@@ -602,23 +599,30 @@ cron.schedule("*/40 * * * *", async () => {
       rows: result.recordset?.length || 0,
     });
 
-  } catch (err) {
-    console.error(`[${runId}] ERROR_ADDITIONAL_FEES`, err.message);
+    return res.json({
+      ok: true,
+      processed: result.recordset?.length || 0
+    });
 
-    // optional: retry once
-    // await retryLogic();
+  } catch (err) {
+    console.error(`[${runId}] ERROR_ADDITIONAL_FEES`, err);
+
+    return res.status(500).json({
+      ok: false,
+      error: err.message
+    });
 
   } finally {
-    isRunning = false;
+    running.additional = false;
     console.log(`[${runId}] Finished_ADDITIONAL_FEES`);
   }
 });
 
 //fill payments (master & details tables) Run every 20 minutes 
-cron.schedule("*/20 * * * *", async () => {
+app.get("/sync-payments", async (req, res) => {
   const runId = Date.now();
 
-  if (isRunning) {
+  if (running.payments) {
     console.warn(`[${runId}] Skipping: previous run still in progress`);
     return;
   }
@@ -630,7 +634,7 @@ cron.schedule("*/20 * * * *", async () => {
     return;
   }
 
-  isRunning = true;
+  running.payments = true;
   console.log(`[${runId}] Starting Payments SP execution for year ${year}`);
 
   try {
@@ -654,36 +658,42 @@ cron.schedule("*/20 * * * *", async () => {
     // await retryLogic();
 
   } finally {
-    isRunning = false;
+    running.payments = false;
     console.log(`[${runId}] Finished_PAYMENTS`);
   }
 });
 
 
 //fill fees matrix Run every hour at minute 0
-cron.schedule("0 0 * * *", async () => {
+app.get("/build-fees-matrix", async (req, res) => {
   const runId = Date.now();
 
-  if (isRunning) {
-    console.warn(`[${runId}] Skipping: previous run still in progress`);
-    return;
+  // 🔐 Security
+  if (req.query.key !== process.env.CRON_SECRET) {
+    return res.status(403).json({ ok: false, message: "Forbidden" });
+  }
+
+  // ⛔ Prevent overlap
+  if (running.matrix) {
+    console.warn(`[${runId}] Skipping: already running`);
+    return res.status(429).json({ ok: false, message: "Already running" });
   }
 
   const year = process.env.VITE_YEAR_NO;
 
   if (!year) {
     console.error(`[${runId}] VITE_YEAR_NO is not set`);
-    return;
+    return res.status(400).json({ ok: false, message: "Year not set" });
   }
 
-  isRunning = true;
+  running.matrix = true;
   console.log(`[${runId}] Starting Fees Matrix SP execution for year ${year}`);
 
   try {
     const pool = await getPool();
 
     const request = pool.request();
-    request.timeout = 70000; // 1.1 minute for safety
+    request.timeout = 180000; // ✅ safer (3 minutes)
 
     const result = await request
       .input("cyy", sql.Int, parseInt(year))
@@ -693,19 +703,24 @@ cron.schedule("0 0 * * *", async () => {
       rows: result.recordset?.length || 0,
     });
 
-  } catch (err) {
-    console.error(`[${runId}] ERROR_FEES_MATRIX`, err.message);
+    return res.json({
+      ok: true,
+      processed: result.recordset?.length || 0
+    });
 
-    // optional: retry once
-    // await retryLogic();
+  } catch (err) {
+    console.error(`[${runId}] ERROR_FEES_MATRIX`, err);
+
+    return res.status(500).json({
+      ok: false,
+      error: err.message
+    });
 
   } finally {
-    isRunning = false;
+    running.matrix = false;
     console.log(`[${runId}] Finished_FEES_MATRIX`);
   }
 });
-
-
 console.log("📧 loop APS ended");
 
 const PORT = process.env.PORT || 3000;

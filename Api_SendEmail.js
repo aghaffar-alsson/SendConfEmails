@@ -348,51 +348,87 @@ app.get("/run-email-confirmation", async (req, res) => {
     console.log("Records to process:", result.recordset.length);
 
     for (const row of result.recordset) {
+      let topic = "";
+      let absface = "";
+      let trmmno = 0;
+      let faceYear = "";
+
+      const parts = (row.facename || "").split("_");
+      absface = (parts[0] || "").trim();
+      trmmno = Number(parts[1] || 0);
+      faceYear = (parts[2] || "").trim();
+
+      console.log("facename:", row.facename);
+      console.log("parts:", parts);
+      console.log("absface:", absface);
+      console.log("trmmno:", trmmno);
+      console.log("faceYear:", faceYear);
+
       try {
-        let topic = "";
-        const parts = (row.facename || "").split("_");
 
-        const absface = (parts[0] || "").trim();
-        const trmmno = Number(parts[1] || 0);
-        const faceYear = (parts[2] || "").trim();
-
-        switch (absface) {
-          case "SCHOOLFEES":
-            topic = `School Fees : Installment ${trmmno}`;
-            break;
-
-          case "EDXL":
-            topic = row.schholno === 1
-              ? "DP2 Exams Fees"
-              : "Cambridge & Edexcel Exams Fees";
-            break;
-
-          case "MINISTRY": {
-            const getres = await pool.request()
-              .input("faceid", sql.Int, trmmno)
-              .query(`SELECT facename FROM ministry_faces WHERE faceid = @faceid`);
-
-            topic = "Ministry Fees - " +
-              (getres.recordset[0]?.facename || `Face ID ${trmmno}`);
-            break;
+      switch (absface) {
+        case "SCHOOLFEES":
+          switch (trmmno.toString()) {
+            case '1': topic = "School Fees : April Installment" + (faceYear ? ` (${faceYear})` : ""); console.log(topic); break;
+            case '2': topic = "School Fees : September Installment" + (faceYear ? ` (${faceYear})` : ""); console.log(topic); break;
+            case '3': topic = "School Fees : November Installment" + (faceYear ? ` (${faceYear})` : ""); console.log(topic); break;
+            case '4': topic = "School Fees : January Installment" + (faceYear ? ` (${faceYear})` : ""); console.log(topic); break;
+            default: topic = `School Fees : Installment ${trmmno}` + (faceYear ? ` (${faceYear})` : ""); console.log(topic); break;
           }
+          break;
 
-          case "TRIP": {
-            const tableName = row.schholno === 1 ? "AM_TRIPS" : "BR_TRIPS";
-
-            const getres = await pool.request()
-              .input("tripid", sql.Int, trmmno)
-              .query(`SELECT tripname FROM ${tableName} WHERE tripid = @tripid`);
-
-            topic = "Trips Fees - " +
-              (getres.recordset[0]?.tripname || `Trip ID ${trmmno}`);
-            break;
+        case "EDXL":
+          switch (row.schholno) {
+            case 1: topic = "DP2 Exams Fees"+ (faceYear ? ` (${faceYear})` : ""); break;
+            case 2: topic = "Cambridge & Edexcel Exams Fees" + (faceYear ? ` (${faceYear})` : ""); break;
+            default: topic = "Exam Fees" + (faceYear ? ` (${faceYear})` : ""); break;
           }
+          break;
 
-          default:
-            topic = row.facename || "Payment";
+        case "MINISTRY": {
+          topic = "Ministry Fees - ";
+          const getres = await pool.request().query(`
+            SELECT facename 
+            FROM ministry_faces 
+            WHERE faceid = ${trmmno}
+          `);
+
+          if (getres.recordset.length > 0) {
+            topic += getres.recordset[0].facename;
+          } else {
+            topic += `Face ID ${trmmno}`;
+          }
+          break;
         }
 
+        case "TRIP": {
+          topic = "Trips Fees - ";
+          const tbnmm = row.schholno === 1 ? "AM_TRIPS" : "BR_TRIPS";
+
+          console.log("tbnmm:", tbnmm);
+          console.log("schoolid:", row.schholno);
+
+          const getres_1 = await pool.request().query(`
+            SELECT tripname 
+            FROM ${tbnmm} 
+            WHERE tripid = ${trmmno}
+          `);
+
+          if (getres_1.recordset.length > 0) {
+            topic += getres_1.recordset[0].tripname;
+            console.log(getres_1.recordset[0].tripname);
+          } else {
+            topic += `Trip ID ${trmmno}`;
+          }
+
+          console.log("topic after TRIP:", topic);
+          break;
+        }
+
+        default:
+          topic = row.facename || "Payment";
+          break;
+      }
         const html = `
         <div style="font-family: Tahoma, Helvetica, sans-serif; font-size: 14px; color: #333;">
           <h2>Payment Confirmation</h2>
@@ -417,7 +453,7 @@ app.get("/run-email-confirmation", async (req, res) => {
           <img src="cid:schoollogo" style="height:80px; display:block; margin:auto;">
         </div>
         `;
-
+        console.log("📧 loop APS ended");
         await sendEmail({
           to: row.customer_email,
           bcc: process.env.BccEmailAddress,
@@ -429,7 +465,7 @@ app.get("/run-email-confirmation", async (req, res) => {
           .input("iden", sql.Int, row.iden)
           .query(`UPDATE apstrans SET confrmd = 1 WHERE iden = @iden`);
 
-        console.log("Email sent:", row.customer_email);
+        console.log("Confirmation email sent:", row.customer_email);
 
       } catch (err) {
         // console.error("Row error:", err);

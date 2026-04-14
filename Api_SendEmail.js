@@ -703,8 +703,8 @@ app.get("/sync-discounts", async (req, res) => {
     error: err.message
   });
 } finally {
-    running.payments = false;
-    console.log(`[${runId}] Finished_PAYMENTS`);
+    running.discounts = false;
+    console.log(`[${runId}] Finished_DISCOUNTS`);
   }
 });
 

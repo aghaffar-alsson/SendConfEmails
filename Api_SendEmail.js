@@ -280,7 +280,15 @@ app.get("/run-email-receipts", async (req, res) => {
         console.log("Receipt sent:", row.customer_email);
 
       } catch (err) {
-        console.error("Row error:", err);
+        // console.error("Row error:", err);
+        // console.error(`ERROR_SEND_RECEIPT_EMAIL for ${row.customer_email}`, err);
+        console.error('ERROR_SEND_RECEIPT_EMAIL', err);
+
+        return res.status(500).json({
+          ok: false,
+          error: err.message
+        });    
+
       }
     }
     res.json({
@@ -288,8 +296,12 @@ app.get("/run-email-receipts", async (req, res) => {
       processed: result.recordset.length
     });
   } catch (err) {
-    console.error("Job error:", err);
-    res.status(500).json({ ok: false });
+    console.error('ERROR_SEND_RECEIPT_EMAIL', err);
+
+    return res.status(500).json({
+      ok: false,
+      error: err.message
+    });    
 
   } finally {
     isRunningEmailJob = false;
@@ -422,7 +434,13 @@ app.get("/run-email-confirmation", async (req, res) => {
         console.log("Email sent:", row.customer_email);
 
       } catch (err) {
-        console.error("Row error:", err);
+        // console.error("Row error:", err);
+        console.error( 'ERROR_SEND_CONF_EMAIL', err);
+
+        return res.status(500).json({
+          ok: false,
+          error: err.message
+        });    
       }
     }
 
@@ -432,8 +450,12 @@ app.get("/run-email-confirmation", async (req, res) => {
     });
 
   } catch (err) {
-    console.error("Job error:", err);
-    res.status(500).json({ ok: false });
+    console.error( 'ERROR_SEND_CONF_EMAIL', err);
+
+    return res.status(500).json({
+      ok: false,
+      error: err.message
+    });    
 
   } finally {
     isRunningConfirmationJob = false;

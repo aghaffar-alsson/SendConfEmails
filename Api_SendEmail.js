@@ -94,18 +94,18 @@ const gmail = google.gmail({
 function encodeMimeWord(str) {
   return `=?UTF-8?B?${Buffer.from(str, "utf8").toString("base64")}?=`;
 }
-async function sendWithRetry(to, bcc, subject, html, retries = 2) {
-  try {
-    await sendEmail({ to, bcc, subject, html });
-  } catch (err) {
-    if (retries > 0) {
-      console.warn("Retrying email...", retries);
-      await new Promise(r => setTimeout(r, 2000));
-      return sendWithRetry({ to, bcc, subject, html }, retries - 1);
-    }
-    throw err;
-  }
-}
+// async function sendWithRetry(to, bcc, subject, html, retries = 2) {
+//   try {
+//     await sendEmail({ to, bcc, subject, html });
+//   } catch (err) {
+//     if (retries > 0) {
+//       console.warn("Retrying email...", retries);
+//       await new Promise(r => setTimeout(r, 2000));
+//       return sendWithRetry({ to, bcc, subject, html }, retries - 1);
+//     }
+//     throw err;
+//   }
+// }
 async function sendEmail({ to, bcc, subject, html }) {
   const mixedBoundary = "mixed_" + Date.now();
   const relatedBoundary = "related_" + Date.now();
@@ -265,12 +265,11 @@ app.get("/run-email-receipts", async (req, res) => {
           </div>
         `;
         console.log(html)        
-        await sendWithRetry({
+        await sendEmail({
           to: row.customer_email,
           bcc: process.env.BccEmailAddress,
           subject: "Payment Receipt",
           html: html,
-          retries: 2
         });
 
         await pool.request()
@@ -419,12 +418,11 @@ app.get("/run-email-confirmation", async (req, res) => {
         </div>
         `;
 
-        await sendWithRetry({
+        await sendEmail({
           to: row.customer_email,
           bcc: process.env.BccEmailAddress,
           subject: `Payment Confirmation for ${row.s_code} ${row.student_name} - ${topic}`,
           html: html,
-          retries: 2
         });
 
         await pool.request()

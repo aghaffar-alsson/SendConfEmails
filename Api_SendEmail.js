@@ -37,6 +37,7 @@ const sqlConfig = {
 };
 
 
+
 process.on("uncaughtException", (err) => {
   console.error("UNCAUGHT EXCEPTION:", err);
 });
@@ -473,7 +474,8 @@ let running = {
   students: false,
   additional: false,
   payments: false,
-  matrix: false
+  matrix: false,
+  discounts: false
 };
 
 //fill students info Run every 30 minutes
@@ -649,6 +651,62 @@ app.get("/sync-payments", async (req, res) => {
   }
 });
 
+//fill discounts Run every 60 minutes 
+app.get("/sync-discounts", async (req, res) => {
+  // 🔐 Security
+  if (req.query.key !== process.env.CRON_SECRET) {
+    return res.status(403).json({ ok: false, message: "Forbidden" });
+  }
+
+  const runId = Date.now();
+
+  // ⛔ Prevent overlap
+  if (running.discounts) {
+    console.warn(`[${runId}] Skipping: discounts service is already running`);
+    return res.status(429).json({ ok: false, message: "Discounts service is already running" });
+  }
+
+  const year = process.env.VITE_YEAR_NO;
+
+  if (!year) {
+    console.error(`[${runId}] VITE_YEAR_NO is not set`);
+    return res.status(400).json({ ok: false, message: "Academic year number not set in .env file" });
+  }
+
+  running.discounts = true;
+  console.log(`[${runId}] Starting Discounts SP execution for year ${year}`);
+
+  try {
+    const pool = await getPool();
+
+    const request = pool.request();
+    request.timeout = 90000; // 1.5 minute for safety
+
+    const result = await request
+      .input("cyy", sql.Int, parseInt(year))
+      .execute("FillDisc");
+
+      console.log(`[${runId}] SUCCESS_DISCOUNTS`, {
+      rows: result.recordset?.length || 0,
+    });
+
+    return res.json({
+      ok: true,
+      processed: result.recordset?.length || 0
+    });
+
+  } catch (err) {
+  console.error(`[${runId}] ERROR_DISCOUNTS`, err.message);
+
+  return res.status(500).json({
+    ok: false,
+    error: err.message
+  });
+} finally {
+    running.payments = false;
+    console.log(`[${runId}] Finished_PAYMENTS`);
+  }
+});
 
 //fill fees matrix Run every hour at minute 0
 app.get("/build-fees-matrix", async (req, res) => {
